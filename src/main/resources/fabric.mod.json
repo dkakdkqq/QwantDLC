@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "qwantdlc",
+  "version": "${version}",
+  "name": "QwantDLC",
+  "description": "QwantDLC mod for Minecraft 1.21.4.",
+  "authors": [
+    "Qwant"
+  ],
+  "contact": {
+    "homepage": "https://example.com/",
+    "sources": "https://github.com/dkakdkqq/QwantDLC"
+  },
+  "license": "All Rights Reserved",
+  "icon": "assets/qwantdlc/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.qwant.qwantdlc.QwantDLC"
+    ],
+    "client": [
+      "com.qwant.qwantdlc.client.QwantDLCClient"
+    ]
+  },
+  "mixins": [
+    "qwantdlc.mixins.json",
+    {
+      "config": "qwantdlc.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.10",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "suggests": {
+  }
+}
