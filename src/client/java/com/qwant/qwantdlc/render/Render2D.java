@@ -106,20 +106,20 @@ public final class Render2D {
 	 */
 	public static void fillRoundedRect(Matrix4f matrix, float x, float y, float w, float h, float radius, int color) {
 		float maxR = Math.min(w, h) / 2f;
-		float r = Math.max(0f, Math.min(radius, maxR));
+		float rad = Math.max(0f, Math.min(radius, maxR));
 
 		float fa = a(color), fr = r(color), fg = g(color), fb = b(color);
 
 		// Inner bands
-		fillRect(matrix, x + r, y, w - 2 * r, r, color);                 // top band
-		fillRect(matrix, x, y + r, w, h - 2 * r, color);                 // center band (full width)
-		fillRect(matrix, x + r, y + h - r, w - 2 * r, r, color);         // bottom band
+		fillRect(matrix, x + rad, y, w - 2 * rad, rad, color);                 // top band
+		fillRect(matrix, x, y + rad, w, h - 2 * rad, color);                   // center band (full width)
+		fillRect(matrix, x + rad, y + h - rad, w - 2 * rad, rad, color);       // bottom band
 
 		// 4 rounded corners as triangle fans
-		fillCornerArc(matrix, x + r,         y + r,         r, 180f, 270f, fr, fg, fb, fa); // top-left
-		fillCornerArc(matrix, x + w - r,     y + r,         r, 270f, 360f, fr, fg, fb, fa); // top-right
-		fillCornerArc(matrix, x + w - r,     y + h - r,     r, 0f,   90f,  fr, fg, fb, fa); // bottom-right
-		fillCornerArc(matrix, x + r,         y + h - r,     r, 90f,  180f, fr, fg, fb, fa); // bottom-left
+		fillCornerArc(matrix, x + rad,         y + rad,         rad, 180f, 270f, fr, fg, fb, fa); // top-left
+		fillCornerArc(matrix, x + w - rad,     y + rad,         rad, 270f, 360f, fr, fg, fb, fa); // top-right
+		fillCornerArc(matrix, x + w - rad,     y + h - rad,     rad, 0f,   90f,  fr, fg, fb, fa); // bottom-right
+		fillCornerArc(matrix, x + rad,         y + h - rad,     rad, 90f,  180f, fr, fg, fb, fa); // bottom-left
 	}
 
 	/**
@@ -138,20 +138,20 @@ public final class Render2D {
 	public static void strokeRoundedRect(Matrix4f matrix, float x, float y, float w, float h,
 	                                     float radius, int color) {
 		float maxR = Math.min(w, h) / 2f;
-		float r = Math.max(0f, Math.min(radius, maxR));
+		float rad = Math.max(0f, Math.min(radius, maxR));
 
 		// straight edges
-		fillRect(matrix, x + r, y,             w - 2 * r, 1f, color); // top
-		fillRect(matrix, x + r, y + h - 1f,    w - 2 * r, 1f, color); // bottom
-		fillRect(matrix, x,         y + r,     1f, h - 2 * r, color); // left
-		fillRect(matrix, x + w - 1f,y + r,     1f, h - 2 * r, color); // right
+		fillRect(matrix, x + rad, y,             w - 2 * rad, 1f, color); // top
+		fillRect(matrix, x + rad, y + h - 1f,    w - 2 * rad, 1f, color); // bottom
+		fillRect(matrix, x,         y + rad,     1f, h - 2 * rad, color); // left
+		fillRect(matrix, x + w - 1f,y + rad,     1f, h - 2 * rad, color); // right
 
 		float fa = a(color), fr = r(color), fg = g(color), fb = b(color);
 
-		strokeCornerArc(matrix, x + r,         y + r,         r, 180f, 270f, fr, fg, fb, fa);
-		strokeCornerArc(matrix, x + w - r,     y + r,         r, 270f, 360f, fr, fg, fb, fa);
-		strokeCornerArc(matrix, x + w - r,     y + h - r,     r, 0f,   90f,  fr, fg, fb, fa);
-		strokeCornerArc(matrix, x + r,         y + h - r,     r, 90f,  180f, fr, fg, fb, fa);
+		strokeCornerArc(matrix, x + rad,         y + rad,         rad, 180f, 270f, fr, fg, fb, fa);
+		strokeCornerArc(matrix, x + w - rad,     y + rad,         rad, 270f, 360f, fr, fg, fb, fa);
+		strokeCornerArc(matrix, x + w - rad,     y + h - rad,     rad, 0f,   90f,  fr, fg, fb, fa);
+		strokeCornerArc(matrix, x + rad,         y + h - rad,     rad, 90f,  180f, fr, fg, fb, fa);
 	}
 
 	/**

@@ -7,35 +7,36 @@ import com.qwant.qwantdlc.module.Module;
 import com.qwant.qwantdlc.module.ModuleManager;
 import com.qwant.qwantdlc.module.modules.render.HudModule;
 
-import net.fabricmc.fabric.api.client.rendering.v1.HudLayerRegistrationCallback;
-import net.fabricmc.fabric.api.client.rendering.v1.IdentifiedLayer;
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.DrawContext;
 
 import java.util.List;
 
 /**
  * On-screen HUD: watermark + active-modules list.
  * Drawn entirely with our Render2D (no vanilla rounded-rect helpers).
+ *
+ * Uses the stable {@link HudRenderCallback} which is available in Fabric API
+ * for 1.21.x.
  */
 public final class HudRenderer {
-	public static final Identifier HUD_LAYER = Identifier.of(QwantDLC.MOD_ID, "hud");
-
 	private HudRenderer() {}
 
 	public static void register() {
-		HudLayerRegistrationCallback.EVENT.register(layeredDrawer ->
-			layeredDrawer.attachLayerAfter(IdentifiedLayer.MISC, HUD_LAYER, (ctx, tickCounter) -> {
-				HudModule hud = findHudModule();
-				if (hud == null || !hud.isToggled()) return;
+		HudRenderCallback.EVENT.register((ctx, tickCounter) -> {
+			HudModule hud = findHudModule();
+			if (hud == null || !hud.isToggled()) return;
 
-				MinecraftClient mc = MinecraftClient.getInstance();
-				if (mc.options.hudHidden) return;
+			MinecraftClient mc = MinecraftClient.getInstance();
+			if (mc.options.hudHidden) return;
+			// Don't draw on top of a screen (we have our own ClickGUI for that).
+			if (mc.currentScreen != null) return;
 
-				renderWatermark(ctx);
-				renderModuleList(ctx);
-			})
-		);
+			renderWatermark(ctx);
+			renderModuleList(ctx);
+		});
 	}
 
 	private static HudModule findHudModule() {
@@ -45,8 +46,8 @@ public final class HudRenderer {
 		return null;
 	}
 
-	private static void renderWatermark(net.minecraft.client.gui.DrawContext ctx) {
-		var tr = MinecraftClient.getInstance().textRenderer;
+	private static void renderWatermark(DrawContext ctx) {
+		TextRenderer tr = MinecraftClient.getInstance().textRenderer;
 		String text = QwantDLC.MOD_NAME;
 		int textWidth = tr.getWidth(text);
 
@@ -65,9 +66,9 @@ public final class HudRenderer {
 			Theme.TEXT_PRIMARY, false);
 	}
 
-	private static void renderModuleList(net.minecraft.client.gui.DrawContext ctx) {
-		var mc = MinecraftClient.getInstance();
-		var tr = mc.textRenderer;
+	private static void renderModuleList(DrawContext ctx) {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		TextRenderer tr = mc.textRenderer;
 
 		List<Module> active = ModuleManager.getInstance().getModules().stream()
 			.filter(Module::isToggled)
