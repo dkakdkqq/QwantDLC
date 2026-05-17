@@ -9,9 +9,6 @@ import com.qwant.qwantdlc.module.modules.movement.SprintModule;
 import com.qwant.qwantdlc.module.modules.player.NoFallModule;
 import com.qwant.qwantdlc.module.modules.render.EspModule;
 import com.qwant.qwantdlc.module.modules.render.HudModule;
-import com.qwant.qwantdlc.module.modules.render.KeybindsModule;
-import com.qwant.qwantdlc.module.modules.render.PotionHudModule;
-import com.qwant.qwantdlc.module.modules.render.TargetHudModule;
 import com.qwant.qwantdlc.module.modules.themes.DarkThemeModule;
 
 import net.fabricmc.api.ModInitializer;
@@ -39,9 +36,6 @@ public class QwantDLC implements ModInitializer {
 		// Render
 		mm.register(new HudModule());
 		mm.register(new EspModule());
-		mm.register(new TargetHudModule());
-		mm.register(new PotionHudModule());
-		mm.register(new KeybindsModule());
 		// Player
 		mm.register(new NoFallModule());
 		// Misc
