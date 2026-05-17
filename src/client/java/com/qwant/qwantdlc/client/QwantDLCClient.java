@@ -5,6 +5,8 @@ import com.qwant.qwantdlc.gui.ClickGuiScreen;
 import com.qwant.qwantdlc.module.ModuleManager;
 import com.qwant.qwantdlc.render.EspRenderer;
 import com.qwant.qwantdlc.render.HudRenderer;
+import com.qwant.qwantdlc.util.KeyHandler;
+import com.qwant.qwantdlc.util.TargetTracker;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -34,9 +36,11 @@ public class QwantDLCClient implements ClientModInitializer {
 					client.setScreen(new ClickGuiScreen());
 				}
 			}
+			KeyHandler.onTick(client);
 			ModuleManager.getInstance().onTick();
 		});
 
+		TargetTracker.register();
 		HudRenderer.register();
 		EspRenderer.register();
 

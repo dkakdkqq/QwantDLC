@@ -13,6 +13,7 @@ import com.qwant.qwantdlc.module.Category;
 import com.qwant.qwantdlc.module.Module;
 import com.qwant.qwantdlc.module.ModuleManager;
 import com.qwant.qwantdlc.render.Render2D;
+import com.qwant.qwantdlc.util.KeyNames;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
@@ -25,27 +26,29 @@ import org.joml.Matrix4f;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Animated single-window ClickGUI with sidebar + body grid.
+ * Animated single-window ClickGUI.
  *
  * Animations:
  *   - Window: scale-in + fade-in on open (back-out easing).
+ *   - Category switching: cross-fade + horizontal slide of the card grid.
  *   - Sidebar items: per-item hover and active fade.
- *   - Module cards: per-card hover lift + active color blend.
- *   - Search bar: focus glow.
+ *   - Module cards: hover/active blend, status dot.
+ *   - Search bar: focus glow + blinking caret.
+ *
+ * Right-click a card to bind a key — the next pressed key becomes its hotkey.
+ * Press Esc inside the bind prompt to cancel; press Backspace/Delete to clear.
  */
 public class ClickGuiScreen extends Screen {
 	private static Category selectedCategory = Category.COMBAT;
 	private static String searchQuery = "";
 
-	// Layout cache for the current frame.
 	private float winX, winY;
-
-	// Scrolling.
 	private float scroll = 0f;
 	private float maxScroll = 0f;
 
 	// === Animations ===
 	private final Animation openAnim = new Animation(420f, Easing.EASE_OUT_BACK, 0f);
+	private final Animation switchAnim = new Animation(260f, Easing.EASE_OUT_QUART, 1f);
 	private final Map<Category, Animation> sidebarHover = new HashMap<>();
 	private final Map<Category, Animation> sidebarActive = new HashMap<>();
 	private final Animation exitHover = new Animation(160f, Easing.EASE_OUT_QUART, 0f);
@@ -53,6 +56,16 @@ public class ClickGuiScreen extends Screen {
 	private final Map<Module, Animation> cardActive = new HashMap<>();
 	private final Animation searchFocus = new Animation(220f, Easing.EASE_OUT_QUART, 0f);
 	private boolean searchFocused = false;
+
+	// Category fade state machine: when user clicks a new category, we
+	// fade out current cards (switchAnim 1->0), swap selectedCategory, then
+	// fade in the new ones (0->1). pendingCategory carries the destination
+	// during the fade-out half.
+	private Category pendingCategory = null;
+	private int slideDirection = 1; // -1 right -> left, +1 left -> right
+
+	// Key binding state (right-click on a card).
+	private Module bindingModule = null;
 
 	public ClickGuiScreen() {
 		super(Text.literal("Qwant"));
@@ -62,6 +75,7 @@ public class ClickGuiScreen extends Screen {
 	protected void init() {
 		super.init();
 		openAnim.setTargetBool(true);
+		switchAnim.snap(1f);
 		for (Category c : Category.values()) {
 			sidebarHover.computeIfAbsent(c, k -> new Animation(150f, Easing.EASE_OUT_QUART, 0f));
 			sidebarActive.computeIfAbsent(c, k -> new Animation(220f, Easing.EASE_OUT_QUART, 0f));
@@ -72,11 +86,9 @@ public class ClickGuiScreen extends Screen {
 	public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
 		float openK = openAnim.update();
 
-		// Backdrop with eased alpha.
 		int backdrop = (int) (0x99 * openK) << 24;
 		ctx.fill(0, 0, this.width, this.height, backdrop);
 
-		// Scale-in around the centre.
 		float scale = 0.92f + 0.08f * openK;
 		float cx = this.width / 2f;
 		float cy = this.height / 2f;
@@ -93,19 +105,16 @@ public class ClickGuiScreen extends Screen {
 		Matrix4f m = ms.peek().getPositionMatrix();
 		float globalAlpha = openK;
 
-		// Subtle outer glow that pulses along with the open animation.
 		int glowAccent = ColorUtil.withAlpha(0xFF8A2BE2, 0.35f * globalAlpha);
 		Render2D.glow(m, winX, winY, Theme.WINDOW_WIDTH, Theme.WINDOW_HEIGHT,
 			Theme.WINDOW_RADIUS, glowAccent, 12f);
 
-		// Window background + border.
 		Render2D.roundedRectWithOutline(m,
 			winX, winY, Theme.WINDOW_WIDTH, Theme.WINDOW_HEIGHT,
 			Theme.WINDOW_RADIUS,
 			ColorUtil.withAlpha(Theme.WINDOW_BG, globalAlpha),
 			ColorUtil.withAlpha(Theme.WINDOW_BORDER, globalAlpha));
 
-		// Sidebar fill.
 		Render2D.fillRect(m,
 			winX + 1f, winY + 1f, Theme.SIDEBAR_WIDTH, Theme.WINDOW_HEIGHT - 2f,
 			ColorUtil.withAlpha(Theme.SIDEBAR_BG, globalAlpha));
@@ -117,17 +126,20 @@ public class ClickGuiScreen extends Screen {
 		drawSidebar(ctx, m, mouseX, mouseY, globalAlpha);
 		drawBody(ctx, m, mouseX, mouseY, globalAlpha);
 
+		if (bindingModule != null) {
+			drawBindOverlay(ctx, m, globalAlpha);
+		}
+
 		ms.pop();
 		super.render(ctx, mouseX, mouseY, delta);
 	}
 
-	// ---------------------------------------------------------------- sidebar
+	// ================================================================ sidebar
 
 	private void drawSidebar(DrawContext ctx, Matrix4f m,
 	                         int mouseX, int mouseY, float globalAlpha) {
 		TextRenderer tr = MinecraftClient.getInstance().textRenderer;
 
-		// Logo.
 		float lx = winX + 14f;
 		float ly = winY + 14f;
 		int chroma = ColorUtil.chroma(6f, 0.8f, 1f, 0f);
@@ -145,7 +157,6 @@ public class ClickGuiScreen extends Screen {
 			(int) (lx + 26f), (int) (ly + 5f),
 			ColorUtil.withAlpha(Theme.TEXT_PRIMARY, globalAlpha), false);
 
-		// "Основные"
 		ctx.drawText(tr, "Основные",
 			(int) (winX + 14f), (int) (winY + 44f),
 			ColorUtil.withAlpha(Theme.TEXT_MUTED, globalAlpha), false);
@@ -190,13 +201,11 @@ public class ClickGuiScreen extends Screen {
 		float hk = hoverAnim.update();
 		float ak = activeAnim.update();
 
-		// Hover background.
 		if (hk > 0.01f) {
 			Render2D.fillRoundedRect(m, x, y, w, h, Theme.SIDEBAR_ITEM_RADIUS,
 				ColorUtil.withAlpha(Theme.SIDEBAR_ITEM_HOVER, hk * globalAlpha));
 		}
 
-		// Active gradient + glow with eased alpha.
 		if (ak > 0.005f) {
 			Render2D.glow(m, x, y, w, h, Theme.SIDEBAR_ITEM_RADIUS,
 				ColorUtil.withAlpha(Theme.SIDEBAR_ITEM_ACTIVE_2, 0.45f * ak * globalAlpha), 5f);
@@ -209,7 +218,6 @@ public class ClickGuiScreen extends Screen {
 				ColorUtil.withAlpha(Theme.SIDEBAR_ITEM_ACTIVE_2, ak * globalAlpha));
 		}
 
-		// Text colour blends hover/active.
 		int color = ColorUtil.lerp(Theme.TEXT_SECONDARY, Theme.TEXT_PRIMARY,
 			Math.max(hk, ak));
 		ctx.drawText(tr, cat.getDisplay(),
@@ -241,7 +249,7 @@ public class ClickGuiScreen extends Screen {
 			ColorUtil.withAlpha(color, globalAlpha), false);
 	}
 
-	// ------------------------------------------------------------------- body
+	// =================================================================== body
 
 	private void drawBody(DrawContext ctx, Matrix4f m,
 	                      int mouseX, int mouseY, float globalAlpha) {
@@ -252,7 +260,6 @@ public class ClickGuiScreen extends Screen {
 		float bodyW = Theme.WINDOW_WIDTH - Theme.SIDEBAR_WIDTH - 2f;
 		float bodyH = Theme.WINDOW_HEIGHT - 2f;
 
-		// Search bar.
 		float searchX = bodyX + 12f;
 		float searchY = bodyY + 12f;
 		float searchW = bodyW - 24f;
@@ -267,7 +274,6 @@ public class ClickGuiScreen extends Screen {
 				ColorUtil.withAlpha(Theme.TEXT_ACCENT, 0.35f * fk * globalAlpha),
 				4f);
 		}
-
 		Render2D.fillRoundedRect(m, searchX, searchY, searchW, Theme.SEARCH_HEIGHT,
 			Theme.SEARCH_RADIUS,
 			ColorUtil.withAlpha(Theme.SEARCH_BG, globalAlpha));
@@ -288,16 +294,24 @@ public class ClickGuiScreen extends Screen {
 			(int) (searchX + 8f),
 			(int) (searchY + (Theme.SEARCH_HEIGHT - tr.fontHeight) / 2f + 1f),
 			ColorUtil.withAlpha(textColor, globalAlpha), false);
-		// Blinking caret when focused.
 		if (searchFocused
 			&& (System.currentTimeMillis() / 500L) % 2L == 0L) {
-			float cx = searchX + 8f + tr.getWidth(searchQuery) + 1f;
-			float cy = searchY + (Theme.SEARCH_HEIGHT - tr.fontHeight) / 2f + 1f;
-			Render2D.fillRect(m, cx, cy, 1f, tr.fontHeight,
+			float ccx = searchX + 8f + tr.getWidth(searchQuery) + 1f;
+			float ccy = searchY + (Theme.SEARCH_HEIGHT - tr.fontHeight) / 2f + 1f;
+			Render2D.fillRect(m, ccx, ccy, 1f, tr.fontHeight,
 				ColorUtil.withAlpha(Theme.TEXT_PRIMARY, globalAlpha));
 		}
 
-		// Cards grid.
+		// Drive category-switch animation.
+		float sk = switchAnim.update();
+		if (pendingCategory != null && switchAnim.getRaw() <= 0.001f) {
+			selectedCategory = pendingCategory;
+			pendingCategory = null;
+			switchAnim.snap(0f);
+			switchAnim.setTarget(1f);
+			scroll = 0f;
+		}
+
 		float gridTop    = searchY + Theme.SEARCH_HEIGHT + 12f;
 		float gridLeft   = bodyX + 12f;
 		float gridRight  = bodyX + bodyW - 12f;
@@ -315,15 +329,19 @@ public class ClickGuiScreen extends Screen {
 		this.maxScroll = Math.max(0f, contentH - viewportH);
 		if (scroll > maxScroll) scroll = maxScroll;
 
+		// Slide offset (positive when sk near 0; eases to 0 when sk == 1).
+		float slidePx = (1f - sk) * 14f * slideDirection;
+		float gridAlpha = sk * globalAlpha;
+
 		for (int i = 0; i < modules.size(); i++) {
 			int row = i / cols;
 			int col = i % cols;
-			float cx = gridLeft + col * (cardW + gap);
-			float cy = gridTop + row * (cardH + gap) - scroll;
+			float ccx = gridLeft + col * (cardW + gap) + slidePx;
+			float ccy = gridTop + row * (cardH + gap) - scroll;
 
-			if (cy + cardH < gridTop - 4f || cy > gridBottom + 4f) continue;
+			if (ccy + cardH < gridTop - 4f || ccy > gridBottom + 4f) continue;
 			drawCard(ctx, m, modules.get(i),
-				cx, cy, cardW, cardH, mouseX, mouseY, globalAlpha);
+				ccx, ccy, cardW, cardH, mouseX, mouseY, gridAlpha);
 		}
 	}
 
@@ -333,6 +351,7 @@ public class ClickGuiScreen extends Screen {
 		TextRenderer tr = MinecraftClient.getInstance().textRenderer;
 		boolean active = module.isToggled();
 		boolean hover  = isInside(mouseX, mouseY, x, y, w, h);
+		boolean isBinding = module == bindingModule;
 
 		Animation hoverAnim = cardHover.computeIfAbsent(module,
 			k -> new Animation(160f, Easing.EASE_OUT_QUART, 0f));
@@ -343,29 +362,26 @@ public class ClickGuiScreen extends Screen {
 		float hk = hoverAnim.update();
 		float ak = activeAnim.update();
 
-		// Active glow.
 		if (ak > 0.01f) {
 			Render2D.glow(m, x, y, w, h, Theme.CARD_RADIUS,
 				ColorUtil.withAlpha(Theme.SIDEBAR_ITEM_ACTIVE_2, 0.45f * ak * globalAlpha),
 				6f);
 		}
 
-		// Background blends Card -> Hover -> Active (in that priority).
 		int bg = ColorUtil.lerp(Theme.CARD_BG, Theme.CARD_BG_HOVER, hk);
 		bg = ColorUtil.lerp(bg, Theme.CARD_BG_ACTIVE, ak);
 		Render2D.fillRoundedRect(m, x, y, w, h, Theme.CARD_RADIUS,
 			ColorUtil.withAlpha(bg, globalAlpha));
 
 		int borderC = ColorUtil.lerp(Theme.CARD_BORDER, Theme.SIDEBAR_ITEM_ACTIVE_2, ak);
+		if (isBinding) borderC = 0xFFFACC15;
 		Render2D.strokeRoundedRect(m, x, y, w, h, Theme.CARD_RADIUS,
 			ColorUtil.withAlpha(borderC, globalAlpha));
 
-		// Title.
 		ctx.drawText(tr, module.getName(),
 			(int) (x + 8f), (int) (y + 6f),
 			ColorUtil.withAlpha(Theme.TEXT_PRIMARY, globalAlpha), false);
 
-		// Description.
 		String desc = module.getDescription();
 		if (!desc.isEmpty()) {
 			String trimmed = trimToWidth(tr, desc, (int) (w - 16f));
@@ -373,14 +389,56 @@ public class ClickGuiScreen extends Screen {
 			ctx.drawText(tr, trimmed,
 				(int) (x + 8f),
 				(int) (y + 18f),
-				ColorUtil.withAlpha(descColor, globalAlpha),
-				false);
+				ColorUtil.withAlpha(descColor, globalAlpha), false);
 		}
 
 		// Status dot.
 		int dotColor = ColorUtil.lerp(Theme.TEXT_MUTED, 0xFFFFFFFF, ak);
 		Render2D.fillRoundedRect(m, x + w - 11f, y + 6f, 5f, 5f, 2f,
 			ColorUtil.withAlpha(dotColor, globalAlpha));
+
+		// Keybind chip in the bottom-right.
+		String keyLabel = isBinding ? "..." : KeyNames.of(module.getKey());
+		int kw = tr.getWidth(keyLabel);
+		float chipPadX = 4f, chipPadY = 2f;
+		float chipW = kw + chipPadX * 2;
+		float chipH = tr.fontHeight + chipPadY * 2 - 1f;
+		float chipX = x + w - chipW - 6f;
+		float chipY = y + h - chipH - 6f;
+		int chipBg = isBinding ? 0xFFFACC15 : 0xFF1F1F25;
+		int chipBorder = isBinding ? 0xFFFACC15
+			: ColorUtil.lerp(Theme.CARD_BORDER, Theme.SIDEBAR_ITEM_ACTIVE_2, ak);
+		Render2D.fillRoundedRect(m, chipX, chipY, chipW, chipH, 3f,
+			ColorUtil.withAlpha(chipBg, globalAlpha));
+		Render2D.strokeRoundedRect(m, chipX, chipY, chipW, chipH, 3f,
+			ColorUtil.withAlpha(chipBorder, globalAlpha));
+		int chipText = isBinding ? 0xFF000000 : Theme.TEXT_SECONDARY;
+		ctx.drawText(tr, keyLabel,
+			(int) (chipX + chipPadX),
+			(int) (chipY + chipPadY),
+			ColorUtil.withAlpha(chipText, globalAlpha), false);
+	}
+
+	private void drawBindOverlay(DrawContext ctx, Matrix4f m, float globalAlpha) {
+		TextRenderer tr = MinecraftClient.getInstance().textRenderer;
+		String text = "Нажмите клавишу для " + bindingModule.getName()
+			+ "  •  Esc отменить, Backspace очистить";
+		int tw = tr.getWidth(text);
+		float padX = 14f, padY = 8f;
+		float w = tw + padX * 2;
+		float h = tr.fontHeight + padY * 2;
+		float x = winX + (Theme.WINDOW_WIDTH - w) / 2f;
+		float y = winY + Theme.WINDOW_HEIGHT - h - 14f;
+
+		Render2D.glow(m, x, y, w, h, 8f,
+			ColorUtil.withAlpha(0xFFFACC15, 0.45f * globalAlpha), 8f);
+		Render2D.fillRoundedRect(m, x, y, w, h, 8f,
+			ColorUtil.withAlpha(0xEE111118, globalAlpha));
+		Render2D.strokeRoundedRect(m, x, y, w, h, 8f,
+			ColorUtil.withAlpha(0xFFFACC15, globalAlpha));
+		ctx.drawText(tr, text,
+			(int) (x + padX), (int) (y + padY),
+			ColorUtil.withAlpha(0xFFFFFFFF, globalAlpha), false);
 	}
 
 	private static String trimToWidth(TextRenderer tr, String text, int maxPx) {
@@ -399,7 +457,12 @@ public class ClickGuiScreen extends Screen {
 	}
 
 	private List<Module> filteredModules() {
-		List<Module> source = ModuleManager.getInstance().getModulesByCategory(selectedCategory);
+		Category current = pendingCategory != null && switchAnim.getRaw() <= 0.5f
+			? selectedCategory   // still showing the old category fading out
+			: selectedCategory;
+		// The switch state machine swaps selectedCategory at sk==0, so we
+		// always read the current selectedCategory here.
+		List<Module> source = ModuleManager.getInstance().getModulesByCategory(current);
 		if (searchQuery.isEmpty()) return new ArrayList<>(source);
 		String q = searchQuery.toLowerCase();
 		List<Module> out = new ArrayList<>();
@@ -412,11 +475,15 @@ public class ClickGuiScreen extends Screen {
 		return out;
 	}
 
-	// ------------------------------------------------------------------ input
+	// ================================================================== input
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
+		// Cancel pending key bind on any click.
+		if (bindingModule != null && button == 0) {
+			bindingModule = null;
+			return true;
+		}
 
 		// Sidebar.
 		Category[] mainCats = {
@@ -428,22 +495,20 @@ public class ClickGuiScreen extends Screen {
 			float x = winX + 8f;
 			float w = Theme.SIDEBAR_WIDTH - 16f;
 			float h = Theme.SIDEBAR_ITEM_HEIGHT;
-			if (isInside(mouseX, mouseY, x, itemY, w, h)) {
-				selectedCategory = c;
-				scroll = 0f;
+			if (button == 0 && isInside(mouseX, mouseY, x, itemY, w, h)) {
+				switchToCategory(c);
 				return true;
 			}
 			itemY += Theme.SIDEBAR_ITEM_HEIGHT + 4f;
 		}
 		itemY += 16f;
-		float x = winX + 8f, w = Theme.SIDEBAR_WIDTH - 16f, h = Theme.SIDEBAR_ITEM_HEIGHT;
-		if (isInside(mouseX, mouseY, x, itemY, w, h)) {
-			selectedCategory = Category.THEMES;
-			scroll = 0f;
+		float sx = winX + 8f, sw = Theme.SIDEBAR_WIDTH - 16f, sh = Theme.SIDEBAR_ITEM_HEIGHT;
+		if (button == 0 && isInside(mouseX, mouseY, sx, itemY, sw, sh)) {
+			switchToCategory(Category.THEMES);
 			return true;
 		}
 		itemY += Theme.SIDEBAR_ITEM_HEIGHT + 4f;
-		if (isInside(mouseX, mouseY, x, itemY, w, h)) {
+		if (button == 0 && isInside(mouseX, mouseY, sx, itemY, sw, sh)) {
 			this.close();
 			return true;
 		}
@@ -456,12 +521,12 @@ public class ClickGuiScreen extends Screen {
 		float searchX = bodyX + 12f;
 		float searchY = bodyY + 12f;
 		float searchW = bodyW - 24f;
-		if (isInside(mouseX, mouseY, searchX, searchY, searchW, Theme.SEARCH_HEIGHT)) {
+		if (button == 0
+			&& isInside(mouseX, mouseY, searchX, searchY, searchW, Theme.SEARCH_HEIGHT)) {
 			searchFocused = true;
 			return true;
-		} else {
-			searchFocused = false;
 		}
+		if (button == 0) searchFocused = false;
 
 		// Card clicks.
 		float gridTop    = searchY + Theme.SEARCH_HEIGHT + 12f;
@@ -478,15 +543,27 @@ public class ClickGuiScreen extends Screen {
 		for (int i = 0; i < modules.size(); i++) {
 			int row = i / cols;
 			int col = i % cols;
-			float cx = gridLeft + col * (cardW + gap);
-			float cy = gridTop + row * (cardH + gap) - scroll;
-			if (cy + cardH < gridTop || cy > gridBottom) continue;
-			if (isInside(mouseX, mouseY, cx, cy, cardW, cardH)) {
-				modules.get(i).toggle();
+			float ccx = gridLeft + col * (cardW + gap);
+			float ccy = gridTop + row * (cardH + gap) - scroll;
+			if (ccy + cardH < gridTop || ccy > gridBottom) continue;
+			if (isInside(mouseX, mouseY, ccx, ccy, cardW, cardH)) {
+				if (button == 0) {
+					modules.get(i).toggle();
+				} else if (button == 1) {
+					bindingModule = modules.get(i);
+				}
 				return true;
 			}
 		}
 		return super.mouseClicked(mouseX, mouseY, button);
+	}
+
+	private void switchToCategory(Category c) {
+		if (c == selectedCategory && pendingCategory == null) return;
+		pendingCategory = c;
+		// Direction: positive if moving down/right in the category list.
+		slideDirection = c.ordinal() > selectedCategory.ordinal() ? 1 : -1;
+		switchAnim.setTarget(0f);
 	}
 
 	@Override
@@ -507,6 +584,7 @@ public class ClickGuiScreen extends Screen {
 
 	@Override
 	public boolean charTyped(char chr, int modifiers) {
+		if (bindingModule != null) return false;
 		if (searchFocused && chr >= 32 && chr != 127) {
 			searchQuery += chr;
 			return true;
@@ -516,6 +594,19 @@ public class ClickGuiScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (bindingModule != null) {
+			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+				bindingModule = null;
+			} else if (keyCode == GLFW.GLFW_KEY_BACKSPACE
+				|| keyCode == GLFW.GLFW_KEY_DELETE) {
+				bindingModule.setKey(GLFW.GLFW_KEY_UNKNOWN);
+				bindingModule = null;
+			} else {
+				bindingModule.setKey(keyCode);
+				bindingModule = null;
+			}
+			return true;
+		}
 		if (searchFocused && keyCode == GLFW.GLFW_KEY_BACKSPACE && !searchQuery.isEmpty()) {
 			searchQuery = searchQuery.substring(0, searchQuery.length() - 1);
 			return true;

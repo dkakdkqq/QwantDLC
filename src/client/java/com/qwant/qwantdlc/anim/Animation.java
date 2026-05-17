@@ -6,7 +6,7 @@ package com.qwant.qwantdlc.anim;
  * eased value. Wall-clock based, so it's frame-rate independent.
  */
 public class Animation {
-	private final float durationMs;
+	private float durationMs;
 	private final Easing.Function ease;
 
 	private float current;
@@ -30,6 +30,17 @@ public class Animation {
 
 	public void setTarget(float t) {
 		this.target = clamp(t);
+	}
+
+	/** Set the animation immediately (no easing) to a given value. */
+	public void snap(float v) {
+		this.current = clamp(v);
+		this.target = this.current;
+		this.lastUpdateMs = -1L;
+	}
+
+	public void setDuration(float durationMs) {
+		this.durationMs = Math.max(1f, durationMs);
 	}
 
 	public void setTargetBool(boolean active) {
