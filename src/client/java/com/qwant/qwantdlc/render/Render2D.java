@@ -237,4 +237,44 @@ public final class Render2D {
 		BufferRenderer.drawWithGlobalProgram(buf.end());
 		disableBlend();
 	}
+
+	/**
+	 * Soft glow / drop shadow around a rectangle. Cheap fake — draws several
+	 * concentric rounded rects with decreasing alpha. Good enough for HUD
+	 * accents (Minced/Nursultan/Expensive style).
+	 */
+	public static void glow(Matrix4f matrix, float x, float y, float w, float h,
+	                        float radius, int color, float spread) {
+		int steps = 6;
+		for (int i = steps; i >= 1; i--) {
+			float p = i / (float) steps;
+			float pad = spread * p;
+			int alpha = (int) (((color >> 24) & 0xFF) * (1f - p) * 0.55f);
+			if (alpha <= 0) continue;
+			int c = (alpha << 24) | (color & 0x00FFFFFF);
+			fillRoundedRect(matrix,
+				x - pad, y - pad,
+				w + pad * 2, h + pad * 2,
+				radius + pad, c);
+		}
+	}
+
+	/**
+	 * Two-color horizontal gradient fill (left -> right).
+	 */
+	public static void fillGradientH(Matrix4f matrix, float x, float y, float w, float h, int left, int right) {
+		enableBlend();
+		setShader();
+
+		Tessellator tess = Tessellator.getInstance();
+		BufferBuilder buf = tess.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+
+		buf.vertex(matrix, x,       y,       0f).color(r(left),  g(left),  b(left),  a(left));
+		buf.vertex(matrix, x,       y + h,   0f).color(r(left),  g(left),  b(left),  a(left));
+		buf.vertex(matrix, x + w,   y + h,   0f).color(r(right), g(right), b(right), a(right));
+		buf.vertex(matrix, x + w,   y,       0f).color(r(right), g(right), b(right), a(right));
+
+		BufferRenderer.drawWithGlobalProgram(buf.end());
+		disableBlend();
+	}
 }
