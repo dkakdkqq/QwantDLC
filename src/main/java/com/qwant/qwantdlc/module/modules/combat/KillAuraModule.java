@@ -5,6 +5,6 @@ import com.qwant.qwantdlc.module.Module;
 
 public class KillAuraModule extends Module {
 	public KillAuraModule() {
-		super("KillAura", Category.COMBAT);
+		super("KillAura", "Автоматически бьёт ближайших противников", Category.COMBAT);
 	}
 }

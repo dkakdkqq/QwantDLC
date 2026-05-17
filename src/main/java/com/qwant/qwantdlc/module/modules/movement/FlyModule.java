@@ -5,6 +5,6 @@ import com.qwant.qwantdlc.module.Module;
 
 public class FlyModule extends Module {
 	public FlyModule() {
-		super("Fly", Category.MOVEMENT);
+		super("Fly", "Свободный полёт по миру", Category.MOVEMENT);
 	}
 }

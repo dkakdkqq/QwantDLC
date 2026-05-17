@@ -5,6 +5,6 @@ import com.qwant.qwantdlc.module.Module;
 
 public class AutoRespawnModule extends Module {
 	public AutoRespawnModule() {
-		super("AutoRespawn", Category.MISC);
+		super("AutoRespawn", "Автоматический респавн после смерти", Category.MISC);
 	}
 }

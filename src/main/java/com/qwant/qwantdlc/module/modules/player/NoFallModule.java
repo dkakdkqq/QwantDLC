@@ -5,6 +5,6 @@ import com.qwant.qwantdlc.module.Module;
 
 public class NoFallModule extends Module {
 	public NoFallModule() {
-		super("NoFall", Category.PLAYER);
+		super("NoFall", "Отменяет урон от падения", Category.PLAYER);
 	}
 }

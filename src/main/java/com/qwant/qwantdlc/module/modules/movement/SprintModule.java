@@ -5,6 +5,6 @@ import com.qwant.qwantdlc.module.Module;
 
 public class SprintModule extends Module {
 	public SprintModule() {
-		super("Sprint", Category.MOVEMENT);
+		super("Sprint", "Постоянный спринт", Category.MOVEMENT);
 	}
 }

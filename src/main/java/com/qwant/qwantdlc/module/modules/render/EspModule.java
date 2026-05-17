@@ -5,6 +5,6 @@ import com.qwant.qwantdlc.module.Module;
 
 public class EspModule extends Module {
 	public EspModule() {
-		super("Esp", Category.RENDER);
+		super("Esp", "Подсвечивает игроков сквозь стены", Category.RENDER);
 	}
 }

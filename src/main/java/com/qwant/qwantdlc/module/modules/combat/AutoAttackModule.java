@@ -5,6 +5,6 @@ import com.qwant.qwantdlc.module.Module;
 
 public class AutoAttackModule extends Module {
 	public AutoAttackModule() {
-		super("AutoAttack", Category.COMBAT);
+		super("AutoAttack", "Автоматическая атака по таймеру", Category.COMBAT);
 	}
 }

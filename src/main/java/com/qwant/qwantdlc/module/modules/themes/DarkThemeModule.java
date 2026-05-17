@@ -5,7 +5,7 @@ import com.qwant.qwantdlc.module.Module;
 
 public class DarkThemeModule extends Module {
 	public DarkThemeModule() {
-		super("Dark", Category.THEMES);
+		super("Dark", "Тёмная тема интерфейса", Category.THEMES);
 		setToggled(true);
 	}
 }
