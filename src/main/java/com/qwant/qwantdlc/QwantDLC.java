@@ -1,8 +1,8 @@
 package com.qwant.qwantdlc;
 
 import com.qwant.qwantdlc.module.ModuleManager;
+import com.qwant.qwantdlc.module.modules.combat.AttackAuraModule;
 import com.qwant.qwantdlc.module.modules.combat.AutoAttackModule;
-import com.qwant.qwantdlc.module.modules.combat.KillAuraModule;
 import com.qwant.qwantdlc.module.modules.misc.AutoRespawnModule;
 import com.qwant.qwantdlc.module.modules.movement.FlyModule;
 import com.qwant.qwantdlc.module.modules.movement.SprintModule;
@@ -31,7 +31,7 @@ public class QwantDLC implements ModInitializer {
 
 		ModuleManager mm = ModuleManager.getInstance();
 		// Combat
-		mm.register(new KillAuraModule());
+		mm.register(new AttackAuraModule());
 		mm.register(new AutoAttackModule());
 		// Movement
 		mm.register(new FlyModule());

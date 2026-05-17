@@ -67,6 +67,9 @@ public class ClickGuiScreen extends Screen {
 	// Key binding state (right-click on a card).
 	private Module bindingModule = null;
 
+	// Settings side-panel.
+	private final SettingsPanel settingsPanel = new SettingsPanel();
+
 	public ClickGuiScreen() {
 		super(Text.literal("Qwant"));
 	}
@@ -125,6 +128,10 @@ public class ClickGuiScreen extends Screen {
 
 		drawSidebar(ctx, m, mouseX, mouseY, globalAlpha);
 		drawBody(ctx, m, mouseX, mouseY, globalAlpha);
+
+		// Render the settings panel on top of the main window so its glow
+		// reaches outside the parent rectangle.
+		settingsPanel.render(ctx, m, winX, winY, mouseX, mouseY, globalAlpha);
 
 		if (bindingModule != null) {
 			drawBindOverlay(ctx, m, globalAlpha);
@@ -352,6 +359,7 @@ public class ClickGuiScreen extends Screen {
 		boolean active = module.isToggled();
 		boolean hover  = isInside(mouseX, mouseY, x, y, w, h);
 		boolean isBinding = module == bindingModule;
+		boolean isSettings = settingsPanel.isVisible() && settingsPanel.getModule() == module;
 
 		Animation hoverAnim = cardHover.computeIfAbsent(module,
 			k -> new Animation(160f, Easing.EASE_OUT_QUART, 0f));
@@ -375,6 +383,7 @@ public class ClickGuiScreen extends Screen {
 
 		int borderC = ColorUtil.lerp(Theme.CARD_BORDER, Theme.SIDEBAR_ITEM_ACTIVE_2, ak);
 		if (isBinding) borderC = 0xFFFACC15;
+		else if (isSettings) borderC = 0xFF8A2BE2;
 		Render2D.strokeRoundedRect(m, x, y, w, h, Theme.CARD_RADIUS,
 			ColorUtil.withAlpha(borderC, globalAlpha));
 
@@ -479,6 +488,11 @@ public class ClickGuiScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// Settings panel takes priority while open.
+		if (settingsPanel.mouseClicked(mouseX, mouseY, button)) {
+			return true;
+		}
+
 		// Cancel pending key bind on any click.
 		if (bindingModule != null && button == 0) {
 			bindingModule = null;
@@ -547,15 +561,53 @@ public class ClickGuiScreen extends Screen {
 			float ccy = gridTop + row * (cardH + gap) - scroll;
 			if (ccy + cardH < gridTop || ccy > gridBottom) continue;
 			if (isInside(mouseX, mouseY, ccx, ccy, cardW, cardH)) {
+				Module mod = modules.get(i);
+				// Compute the keybind chip rect (bottom-right of the card).
+				MinecraftClient mc = MinecraftClient.getInstance();
+				TextRenderer tr = mc.textRenderer;
+				String keyLabel = KeyNames.of(mod.getKey());
+				int kw = tr.getWidth(keyLabel);
+				float chipPadX = 4f, chipPadY = 2f;
+				float chipW = kw + chipPadX * 2;
+				float chipH = tr.fontHeight + chipPadY * 2 - 1f;
+				float chipX = ccx + cardW - chipW - 6f;
+				float chipY = ccy + cardH - chipH - 6f;
+				boolean onChip = isInside(mouseX, mouseY, chipX, chipY, chipW, chipH);
+
 				if (button == 0) {
-					modules.get(i).toggle();
+					if (onChip) {
+						// Left-click on the keybind chip starts binding.
+						bindingModule = mod;
+					} else {
+						mod.toggle();
+					}
 				} else if (button == 1) {
-					bindingModule = modules.get(i);
+					if (onChip || !mod.hasSettings()) {
+						// Right-click on the chip OR on a module without
+						// settings -> bind a key.
+						bindingModule = mod;
+					} else {
+						// Right-click on the card body -> toggle settings panel.
+						settingsPanel.toggle(mod);
+					}
 				}
 				return true;
 			}
 		}
 		return super.mouseClicked(mouseX, mouseY, button);
+	}
+
+	@Override
+	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		if (settingsPanel.mouseReleased(mouseX, mouseY, button)) return true;
+		return super.mouseReleased(mouseX, mouseY, button);
+	}
+
+	@Override
+	public boolean mouseDragged(double mouseX, double mouseY, int button,
+	                            double deltaX, double deltaY) {
+		if (settingsPanel.mouseDragged(mouseX, mouseY, button)) return true;
+		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
 	}
 
 	private void switchToCategory(Category c) {
@@ -564,6 +616,9 @@ public class ClickGuiScreen extends Screen {
 		// Direction: positive if moving down/right in the category list.
 		slideDirection = c.ordinal() > selectedCategory.ordinal() ? 1 : -1;
 		switchAnim.setTarget(0f);
+		// Close the settings panel — its module probably belongs to the old
+		// category and the new category will scroll/animate cards differently.
+		settingsPanel.close();
 	}
 
 	@Override
@@ -612,6 +667,10 @@ public class ClickGuiScreen extends Screen {
 			return true;
 		}
 		if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+			if (settingsPanel.isOpen()) {
+				settingsPanel.close();
+				return true;
+			}
 			this.close();
 			return true;
 		}
